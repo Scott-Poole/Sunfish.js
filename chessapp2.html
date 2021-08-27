@@ -1,0 +1,168 @@
+<html>
+	<div id="myBoard" style="width: 400px"></div>
+	
+	<script src="js/chess.js"></script>
+	<script src="js/jquery-3.6.0.js"></script>
+	<link rel="stylesheet" href="css/chessboard-1.0.0.min.css">
+	<script src="js/chessboard-1.0.0.min.js"></script>
+	<script src="js/halibut.js"></script>
+	
+	Color Pieces <select id="selectedColor">
+		<option value = "w" selected>White</option>
+		<option value = "b">Black</option>
+		<option value="r">Random</option>
+	</select><br>
+	<button id="newGame">New Game</button><br>
+	<input type="range" min="100" max="10000" value="1000" class="slider" id="engineTime" onchange="changeSlider()">
+	<div id='time'>Enigne Think Time (ms): 1000</div>
+	
+	<script>
+		//////////////////////////////////////////////////////////////////
+		// UI variables
+		/////////////////////////////////////////////////////////////////
+		//Empty chessboard.js board
+		var board = null
+		//Empty chess.js game
+		var game = new Chess()
+		//player starting color
+		var color = 'w'
+		var selectedColor = document.getElementById("selectedColor");
+		var newGame = document.getElementById("newGame");
+		var engineTime = document.getElementById("engineTime");
+		var t = document.getElementById("time");
+		/////////////////////////////////////////////////////////////////
+		//Engine variables
+		////////////////////////////////////////////////////////////////
+		var hist = [new Position(initial, 0, [true, true], [true, true], 0, 0)]
+		var searcher = new Searcher()
+		
+		changeSlider = function(){
+			t.innerHTML = 'Enigne Think Time (ms): '+engineTime.value
+		}
+		
+		newGame.onclick = function(){
+			game.reset();
+			color = selectedColor.value;
+			if(selectedColor.value == "r"){
+				color = Math.random() < 0.5 ? "w" : "b";
+			}
+			
+			hist = [new Position(initial, 0, [true, true], [true, true], 0, 0)]
+			searcher = new Searcher()
+			
+			if(color == "w"){
+				board.orientation('white');
+				board.position(game.fen())
+			}else{
+				board.orientation('black');
+				makeEngineMove();
+			}
+		}
+		
+		function onDragStart (source, piece, position, orientation) {
+		  
+		  // do not pick up pieces if the game is over
+		  if (game.game_over()) return false
+		  // only pick up pieces for Human
+		  if (piece.search(color) == -1) return false
+		}
+
+		
+		function makeEngineMove () {
+			
+			// Fire up the engine to look for a move.
+			var start = Date.now()
+			var depth = 0
+			var move = null
+			var score = null
+			for(var s of searcher.search(hist[hist.length - 1], hist)){
+				depth = s[0]
+				move = s[1]
+				score = s[2]
+				if(Date.now() - start > engineTime.value){
+					break
+				}
+			}
+			var m = game.move({
+			  from: render(move[0]),
+			  to: render(move[1]),
+			  promotion: 'q',
+		    })
+			if (m === null){
+				alert('Engine Error: Engine tried to play an illegal move')
+				return
+			}
+			// The black player moves from a rotated position, so we have to
+			// 'back rotate' the move before printing it.
+			//console.log(Array.from(hist[hist.length - 1].gen_moves()))
+			hist.push(hist[hist.length - 1].move(move))
+			//update UI
+			board.position(game.fen())
+			
+			console.log(score+', depth: '+depth)
+			if(game.in_checkmate()){
+				alert("You Lost")
+				return
+			}else if(game.in_draw() || game.in_threefold_repetition() || game.in_stalemate() || game.insufficient_material()){
+				alert("Draw")
+				return
+			}
+			//console.log(Object.keys(searcher.tp_score).length)
+			//console.log(searcher.tp_move)
+		}
+		function parse(c){
+			var col = c.charCodeAt(0) - 97
+			var row = parseInt(c[1]) - 1
+			var result = A1 + col - 10*row
+			return color == 'w' ? result : 119 - result
+		}
+		function render(i){
+			if(color == 'w'){
+				i = 119 - i
+			}
+			var col = (i % 10) - 1
+			var row = Math.floor((i-A1) / 10)
+			return String.fromCharCode(col + 97) + (-row + 1)
+		}
+		function onDrop (source, target) {
+		    // see if the move is legal
+		    var move = game.move({
+			  from: source,
+			  to: target,
+			  promotion: 'q',
+		    })
+		    
+		    // illegal move
+		    if (move === null) return 'snapback'
+			//legal move, so tell engine what move you made
+			hist.push(hist[hist.length - 1].move([parse(move.from), parse(move.to)]))
+			if(game.in_checkmate()){
+				alert("You won")
+				return
+			}else if(game.in_draw() || game.in_threefold_repetition() || game.in_stalemate() || game.insufficient_material()){
+				alert("Draw")
+				return
+			}
+			// make engine move for black
+			
+			window.setTimeout(makeEngineMove, 150)
+		}
+
+		// update the board position after the piece snap
+		// for castling, en passant, pawn promotion
+		function onSnapEnd () {
+		  board.position(game.fen())
+		}
+
+		var config = {
+		  draggable: true,
+		  position: 'start',
+		  orientation:'white',
+		  onDragStart: onDragStart,
+		  onDrop: onDrop,
+		  onSnapEnd: onSnapEnd,
+		  
+		}
+		board = Chessboard('myBoard', config)
+	</script>
+</html>
